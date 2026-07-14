@@ -71,6 +71,48 @@ def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
 
+    import google.protobuf.descriptor
+
+    def descriptor_to_openapi(descriptor, schemas_dict):
+        schema_name = descriptor.name
+        if schema_name in schemas_dict:
+            return {"$ref": f"#/components/schemas/{schema_name}"}
+        properties = {}
+        schema = {"type": "object", "properties": properties}
+        schemas_dict[schema_name] = schema
+        for field in descriptor.fields:
+            json_name = field.json_name or field.name
+            if field.is_repeated:
+                field_schema = {"type": "array", "items": get_field_type_schema(field, schemas_dict)}
+            else:
+                field_schema = get_field_type_schema(field, schemas_dict)
+            properties[json_name] = field_schema
+        return {"$ref": f"#/components/schemas/{schema_name}"}
+
+    def get_field_type_schema(field, schemas_dict):
+        fd = google.protobuf.descriptor.FieldDescriptor
+        if field.type == fd.TYPE_DOUBLE or field.type == fd.TYPE_FLOAT:
+            return {"type": "number"}
+        if field.type in (fd.TYPE_INT64, fd.TYPE_UINT64, fd.TYPE_INT32, fd.TYPE_UINT32, fd.TYPE_SINT32, fd.TYPE_SINT64):
+            return {"type": "integer"}
+        if field.type == fd.TYPE_BOOL:
+            return {"type": "boolean"}
+        if field.type == fd.TYPE_STRING:
+            return {"type": "string"}
+        if field.type == fd.TYPE_BYTES:
+            return {"type": "string", "format": "binary"}
+        if field.type == fd.TYPE_ENUM:
+            enum_name = field.enum_type.name
+            if enum_name not in schemas_dict:
+                schemas_dict[enum_name] = {
+                    "type": "string",
+                    "enum": [value.name for value in field.enum_type.values],
+                }
+            return {"$ref": f"#/components/schemas/{enum_name}"}
+        if field.type == fd.TYPE_MESSAGE:
+            return descriptor_to_openapi(field.message_type, schemas_dict)
+        return {"type": "string"}
+
     openapi_schema = get_openapi(
         title=app.title,
         version=app.version,
@@ -83,229 +125,35 @@ def custom_openapi():
     if "schemas" not in openapi_schema["components"]:
         openapi_schema["components"]["schemas"] = {}
 
-    schemas = {
-        "ListSessionsRequest": {
-            "type": "object",
-            "properties": {},
-            "description": "Empty request body to list available sessions.",
-        },
-        "ListSessionsResponse": {
-            "type": "object",
-            "properties": {
-                "sessions": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of session identifiers (e.g. '45-1').",
+    schemas_dict = openapi_schema["components"]["schemas"]
+
+    try:
+        endpoints = connect_app._endpoints(connect_app._service)
+        for path, endpoint in endpoints.items():
+            method_info = endpoint.method
+            in_ref = descriptor_to_openapi(method_info.input.DESCRIPTOR, schemas_dict)
+            out_ref = descriptor_to_openapi(method_info.output.DESCRIPTOR, schemas_dict)
+
+            openapi_schema["paths"][path] = {
+                "post": {
+                    "tags": [method_info.service_name],
+                    "summary": method_info.name,
+                    "operationId": method_info.name,
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": in_ref}},
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Successful Response",
+                            "content": {"application/json": {"schema": out_ref}},
+                        }
+                    },
                 }
-            },
-        },
-        "Chamber": {
-            "type": "string",
-            "enum": ["CHAMBER_UNSPECIFIED", "CHAMBER_HOUSE", "CHAMBER_SENATE"],
-            "description": "Parliamentary chamber filter.",
-        },
-        "BillFilters": {
-            "type": "object",
-            "properties": {
-                "session": {"type": "string", "description": "Session code (e.g. '45-1')."},
-                "chamber": {"$ref": "#/components/schemas/Chamber"},
-                "sponsor": {"type": "string", "description": "Sponsor name search substring."},
-                "sponsorAffiliation": {"type": "string", "description": "Sponsor title or party."},
-                "status": {"type": "string", "description": "Bill status filter."},
-                "latestActivity": {"type": "string", "description": "Latest stage activity filter."},
-                "number": {"type": "string", "description": "Bill number filter (e.g. 'C-11')."},
-                "dateAfter": {
-                    "type": "string",
-                    "format": "date",
-                    "description": "Filter bills updated after this date.",
-                },
-                "dateBefore": {
-                    "type": "string",
-                    "format": "date",
-                    "description": "Filter bills updated before this date.",
-                },
-                "searchQuery": {"type": "string", "description": "Full-text search query across fields."},
-                "hasText": {"type": "boolean", "description": "Filter by whether bill text is scraped."},
-                "committeeOnly": {"type": "boolean", "description": "Filter for bills in committee stage."},
-            },
-        },
-        "SortField": {
-            "type": "string",
-            "enum": [
-                "SORT_FIELD_UNSPECIFIED",
-                "SORT_FIELD_LATEST_EVENT_DATE",
-                "SORT_FIELD_NUMBER",
-                "SORT_FIELD_SPONSOR",
-                "SORT_FIELD_STATUS",
-                "SORT_FIELD_TITLE",
-            ],
-        },
-        "SortDirection": {
-            "type": "string",
-            "enum": ["SORT_DIRECTION_UNSPECIFIED", "SORT_DIRECTION_DESC", "SORT_DIRECTION_ASC"],
-        },
-        "ListBillsRequest": {
-            "type": "object",
-            "properties": {
-                "filters": {"$ref": "#/components/schemas/BillFilters"},
-                "sortField": {"$ref": "#/components/schemas/SortField"},
-                "sortDirection": {"$ref": "#/components/schemas/SortDirection"},
-                "limit": {"type": "integer", "default": 20, "description": "Max number of bills to return."},
-                "offset": {"type": "integer", "default": 0, "description": "Offset index for pagination."},
-            },
-        },
-        "BillSummary": {
-            "type": "object",
-            "properties": {
-                "number": {"type": "string"},
-                "session": {"type": "string"},
-                "titleEn": {"type": "string"},
-                "titleFr": {"type": "string"},
-                "sponsorName": {"type": "string"},
-                "status": {"type": "string"},
-                "latestEventDate": {"type": "string", "format": "date-time"},
-            },
-        },
-        "ListBillsResponse": {
-            "type": "object",
-            "properties": {
-                "bills": {"type": "array", "items": {"$ref": "#/components/schemas/BillSummary"}},
-                "totalCount": {"type": "integer"},
-            },
-        },
-        "GetBillRequest": {
-            "type": "object",
-            "required": ["session", "billNumber"],
-            "properties": {
-                "session": {"type": "string", "description": "Session code (e.g. '45-1')."},
-                "billNumber": {"type": "string", "description": "Bill number (e.g. 'C-11')."},
-            },
-        },
-        "BillStage": {
-            "type": "object",
-            "properties": {
-                "slug": {"type": "string"},
-                "name": {"type": "string"},
-                "date": {"type": "string", "format": "date-time"},
-                "sourceType": {"type": "string"},
-            },
-        },
-        "BillDetail": {
-            "type": "object",
-            "properties": {
-                "number": {"type": "string"},
-                "session": {"type": "string"},
-                "titleEn": {"type": "string"},
-                "titleFr": {"type": "string"},
-                "sponsorName": {"type": "string"},
-                "sponsorEmail": {"type": "string"},
-                "status": {"type": "string"},
-                "latestEventDate": {"type": "string", "format": "date-time"},
-                "stages": {"type": "array", "items": {"$ref": "#/components/schemas/BillStage"}},
-            },
-        },
-        "GetBillResponse": {"type": "object", "properties": {"bill": {"$ref": "#/components/schemas/BillDetail"}}},
-        "GetBillTextRequestFormat": {"type": "string", "enum": ["FORMAT_UNSPECIFIED", "FORMAT_XML", "FORMAT_MARKDOWN"]},
-        "GetBillTextRequest": {
-            "type": "object",
-            "required": ["session", "billNumber"],
-            "properties": {
-                "session": {"type": "string"},
-                "billNumber": {"type": "string"},
-                "stageSlug": {"type": "string", "description": "Specific stage slug (optional, defaults to latest)."},
-                "format": {"$ref": "#/components/schemas/GetBillTextRequestFormat"},
-            },
-        },
-        "GetBillTextResponse": {
-            "type": "object",
-            "properties": {
-                "billNumber": {"type": "string"},
-                "session": {"type": "string"},
-                "stageSlug": {"type": "string"},
-                "content": {"type": "string"},
-                "format": {"type": "string"},
-            },
-        },
-    }
+            }
+    except Exception as e:
+        print(f"Failed to dynamically generate ConnectRPC OpenAPI schema: {e}")  # noqa: T201
 
-    openapi_schema["components"]["schemas"].update(schemas)
-
-    paths = {
-        "/legisinfo.v1.LegisinfoService/ListSessions": {
-            "post": {
-                "tags": ["LegisinfoService (ConnectRPC)"],
-                "summary": "List available scraped sessions",
-                "operationId": "ListSessions",
-                "requestBody": {
-                    "required": True,
-                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListSessionsRequest"}}},
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success response",
-                        "content": {
-                            "application/json": {"schema": {"$ref": "#/components/schemas/ListSessionsResponse"}}
-                        },
-                    }
-                },
-            }
-        },
-        "/legisinfo.v1.LegisinfoService/ListBills": {
-            "post": {
-                "tags": ["LegisinfoService (ConnectRPC)"],
-                "summary": "List and filter bills",
-                "operationId": "ListBills",
-                "requestBody": {
-                    "required": True,
-                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListBillsRequest"}}},
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success response",
-                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListBillsResponse"}}},
-                    }
-                },
-            }
-        },
-        "/legisinfo.v1.LegisinfoService/GetBill": {
-            "post": {
-                "tags": ["LegisinfoService (ConnectRPC)"],
-                "summary": "Get detailed information for a specific bill",
-                "operationId": "GetBill",
-                "requestBody": {
-                    "required": True,
-                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GetBillRequest"}}},
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success response",
-                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GetBillResponse"}}},
-                    }
-                },
-            }
-        },
-        "/legisinfo.v1.LegisinfoService/GetBillText": {
-            "post": {
-                "tags": ["LegisinfoService (ConnectRPC)"],
-                "summary": "Get the text content of a bill stage",
-                "operationId": "GetBillText",
-                "requestBody": {
-                    "required": True,
-                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GetBillTextRequest"}}},
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success response",
-                        "content": {
-                            "application/json": {"schema": {"$ref": "#/components/schemas/GetBillTextResponse"}}
-                        },
-                    }
-                },
-            }
-        },
-    }
-
-    openapi_schema["paths"].update(paths)
     app.openapi_schema = openapi_schema
     return openapi_schema
 
