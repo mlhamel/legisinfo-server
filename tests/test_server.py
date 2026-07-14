@@ -216,3 +216,11 @@ class TestLegisinfoServer(unittest.TestCase):
         })
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()["content"], "# First Reading text")
+
+    def test_openapi_schema(self):
+        res = self.client.get("/openapi.json")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("/legisinfo.v1.LegisinfoService/ListSessions", data["paths"])
+        self.assertIn("/legisinfo.v1.LegisinfoService/ListBills", data["paths"])
+        self.assertIn("ListBillsRequest", data["components"]["schemas"])
