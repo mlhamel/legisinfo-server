@@ -2,69 +2,68 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from typing import List, Dict, Any, Tuple, Optional
+from typing import Any
+
 
 class LegisinfoReader:
     def __init__(self, data_repo_path: str):
         self.data_repo_path = data_repo_path
 
-    def get_sessions(self) -> List[str]:
+    def get_sessions(self) -> list[str]:
         """List all parliament sessions available in the data repository."""
         if not os.path.exists(self.data_repo_path):
             return []
-        
+
         sessions = []
         for name in os.listdir(self.data_repo_path):
-            if os.path.isdir(os.path.join(self.data_repo_path, name)):
-                # Match e.g. "45-1", "36-1"
-                if re.match(r"^\d+-\d+$", name):
-                    sessions.append(name)
-        
+            if os.path.isdir(os.path.join(self.data_repo_path, name)) and re.match(r"^\d+-\d+$", name):
+                sessions.append(name)
+
         # Sort sessions descending (e.g. 45-1, 44-2, 44-1...)
-        def session_key(s: str) -> Tuple[int, int]:
+        def session_key(s: str) -> tuple[int, int]:
             parts = s.split("-")
             return int(parts[0]), int(parts[1])
-            
+
         sessions.sort(key=session_key, reverse=True)
         return sessions
 
-    def _parse_metadata(self, metadata_path: str) -> Optional[Dict[str, Any]]:
+    def _parse_metadata(self, metadata_path: str) -> dict[str, Any] | None:
         """Parse metadata.xml for a bill and return a structured dictionary."""
         if not os.path.exists(metadata_path):
             return None
-        
+
         try:
             tree = ET.parse(metadata_path)
             root = tree.getroot()
-            
+
             number = root.findtext("NumberCode") or ""
             # Fallback to file's parent folder name if NumberCode is missing
             if not number:
                 number = os.path.basename(os.path.dirname(metadata_path))
-                
+
             title_en = root.findtext("LongTitleEn") or root.findtext("ShortTitleEn") or ""
             title_fr = root.findtext("LongTitleFr") or root.findtext("ShortTitleFr") or ""
-            
+
             sponsor_name = root.findtext(".//SponsorPersonName") or ""
             sp_title = root.findtext(".//SponsorAffiliationTitleEn") or ""
             sponsor_affiliation = sp_title or root.findtext(".//SponsorAffiliationRoleEn") or ""
-            
+
             if sponsor_name and sp_title:
                 sponsor_display = f"{sp_title} {sponsor_name}"
             else:
                 sponsor_display = sponsor_name or "Parliament of Canada"
-                
+
             sponsor_email = ""
             if sponsor_name:
                 cleaned_name = re.sub(r"[^a-zA-Z\s.-]", "", sponsor_name).strip()
                 cleaned_name = re.sub(r"\s+", ".", cleaned_name).lower()
                 sponsor_email = f"{cleaned_name}@parl.gc.ca"
-            
+
             status = root.findtext("StatusNameEn") or ""
             latest_activity = root.findtext("LatestBillEventTypeName") or ""
-            
+
             latest_event_date_str = root.findtext("LatestBillEventDateTime") or ""
-            
+
             # Parse stages
             stages = []
             # Extract House and Senate stages
@@ -73,12 +72,12 @@ class LegisinfoReader:
                     stage_name = stage_node.findtext("BillStageNameEn")
                     stage_status = stage_node.findtext("StateNameEn")
                     stage_date = stage_node.findtext("LastStageEventStartDateTime")
-                    
+
                     if stage_name and stage_status == "Completed" and stage_date:
                         # Clean date
                         if stage_date.startswith("0001-01-01"):
                             continue
-                            
+
                         # Generate slug
                         slug = stage_name.lower().replace(" ", "-").replace("stage", "").strip("-")
                         # Normalize slugs
@@ -92,22 +91,18 @@ class LegisinfoReader:
                             slug = "committee"
                         elif "royal" in slug or "assent" in slug:
                             slug = "royal-assent"
-                            
-                        stages.append({
-                            "slug": slug,
-                            "name": stage_name,
-                            "date": stage_date,
-                            "source_type": "XML"
-                        })
-                        
+
+                        stages.append({"slug": slug, "name": stage_name, "date": stage_date, "source_type": "XML"})
+
             # Sort stages chronologically based on date
             def parse_date(d):
                 try:
                     return datetime.fromisoformat(d)
                 except Exception:
                     return datetime.min
+
             stages.sort(key=lambda s: parse_date(s["date"]))
-            
+
             return {
                 "number": number,
                 "title_en": title_en,
@@ -118,7 +113,7 @@ class LegisinfoReader:
                 "status": status,
                 "latest_activity": latest_activity,
                 "latest_event_date": latest_event_date_str,
-                "stages": stages
+                "stages": stages,
             }
         except Exception:
             return None
@@ -126,28 +121,28 @@ class LegisinfoReader:
     def get_bills(
         self,
         session: str,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
         sort_field: str = "SORT_FIELD_UNSPECIFIED",
-        sort_direction: str = "SORT_DIRECTION_UNSPECIFIED"
-    ) -> List[Dict[str, Any]]:
+        sort_direction: str = "SORT_DIRECTION_UNSPECIFIED",
+    ) -> list[dict[str, Any]]:
         """Retrieve and filter bills in a session."""
         bills_dir = os.path.join(self.data_repo_path, session, "bills")
         if not os.path.exists(bills_dir):
             return []
-            
+
         bills = []
         for bill_number in os.listdir(bills_dir):
             bill_path = os.path.join(bills_dir, bill_number)
             if not os.path.isdir(bill_path):
                 continue
-                
+
             metadata_path = os.path.join(bill_path, "metadata.xml")
             bill_data = self._parse_metadata(metadata_path)
             if bill_data:
                 bill_data["session"] = session
                 bill_data["has_text"] = os.path.exists(os.path.join(bill_path, "bill_text.md"))
                 bills.append(bill_data)
-                
+
         # Apply filters
         if filters:
             filtered_bills = []
@@ -201,7 +196,7 @@ class LegisinfoReader:
                             return None
 
                 latest_dt = to_datetime(b["latest_event_date"])
-                
+
                 after_f = filters.get("date_after")
                 if after_f:
                     after_dt = to_datetime(after_f)
@@ -219,11 +214,11 @@ class LegisinfoReader:
                 if query_f:
                     query = query_f.lower()
                     matches = (
-                        query in b["number"].lower() or
-                        query in b["title_en"].lower() or
-                        query in b["title_fr"].lower() or
-                        query in b["sponsor_name"].lower() or
-                        query in b["status"].lower()
+                        query in b["number"].lower()
+                        or query in b["title_en"].lower()
+                        or query in b["title_fr"].lower()
+                        or query in b["sponsor_name"].lower()
+                        or query in b["status"].lower()
                     )
                     if not matches:
                         continue
@@ -233,7 +228,11 @@ class LegisinfoReader:
                     continue
 
                 # 10. Committee Only
-                if filters.get("committee_only") and "committee" not in b["status"].lower() and "committee" not in b["latest_activity"].lower():
+                if (
+                    filters.get("committee_only")
+                    and "committee" not in b["status"].lower()
+                    and "committee" not in b["latest_activity"].lower()
+                ):
                     continue
 
                 filtered_bills.append(b)
@@ -241,28 +240,28 @@ class LegisinfoReader:
 
         # Apply sorting
         # Determine sorting field
-        def sort_key_fn(b: Dict[str, Any]):
+        def sort_key_fn(b: dict[str, Any]):
             if sort_field == "SORT_FIELD_NUMBER":
                 # Parse bill number to sort C-11 before C-100
                 match = re.match(r"^([C|S])-(\d+)", b["number"])
                 if match:
                     return match.group(1), int(match.group(2))
                 return b["number"], 0
-            elif sort_field == "SORT_FIELD_SPONSOR":
+            if sort_field == "SORT_FIELD_SPONSOR":
                 return b["sponsor_name"].lower()
-            elif sort_field == "SORT_FIELD_STATUS":
+            if sort_field == "SORT_FIELD_STATUS":
                 return b["status"].lower()
-            elif sort_field == "SORT_FIELD_TITLE":
+            if sort_field == "SORT_FIELD_TITLE":
                 return b["title_en"].lower() or b["title_fr"].lower()
-            else: # SORT_FIELD_LATEST_EVENT_DATE or SORT_FIELD_UNSPECIFIED
-                # Sort by date
-                ds = b["latest_event_date"]
-                if not ds or ds.startswith("0001-01-01"):
-                    return datetime.min
-                try:
-                    return datetime.fromisoformat(ds)
-                except Exception:
-                    return datetime.min
+            # SORT_FIELD_LATEST_EVENT_DATE or SORT_FIELD_UNSPECIFIED
+            # Sort by date
+            ds = b["latest_event_date"]
+            if not ds or ds.startswith("0001-01-01"):
+                return datetime.min
+            try:
+                return datetime.fromisoformat(ds)
+            except Exception:
+                return datetime.min
 
         # Sort direction default
         # If unspecified, DESC for date, ASC for others
@@ -280,7 +279,7 @@ class LegisinfoReader:
         bills.sort(key=sort_key_fn, reverse=is_desc)
         return bills
 
-    def get_bill_detail(self, session: str, bill_number: str) -> Optional[Dict[str, Any]]:
+    def get_bill_detail(self, session: str, bill_number: str) -> dict[str, Any] | None:
         """Get full details of a bill including its stages."""
         metadata_path = os.path.join(self.data_repo_path, session, "bills", bill_number, "metadata.xml")
         bill_data = self._parse_metadata(metadata_path)
@@ -298,10 +297,12 @@ class LegisinfoReader:
             return bill_data
         return None
 
-    def get_bill_text(self, session: str, bill_number: str, stage_slug: str = "", as_markdown: bool = True) -> Tuple[str, str]:
+    def get_bill_text(
+        self, session: str, bill_number: str, stage_slug: str = "", as_markdown: bool = True
+    ) -> tuple[str, str]:
         """Retrieve bill text content. Returns (content, format)."""
         bill_dir = os.path.join(self.data_repo_path, session, "bills", bill_number)
-        
+
         # Determine filepath based on stage_slug
         if stage_slug:
             ext = "md" if as_markdown else "xml"
@@ -312,7 +313,7 @@ class LegisinfoReader:
                 alt_path = os.path.join(bill_dir, "stages", f"{stage_slug}.{alt_ext}")
                 if os.path.exists(alt_path):
                     path = alt_path
-                    as_markdown = (alt_ext == "md")
+                    as_markdown = alt_ext == "md"
         else:
             # Latest bill text
             ext = "md" if as_markdown else "xml"
@@ -322,13 +323,13 @@ class LegisinfoReader:
                 alt_path = os.path.join(bill_dir, f"bill_text.{alt_ext}")
                 if os.path.exists(alt_path):
                     path = alt_path
-                    as_markdown = (alt_ext == "md")
+                    as_markdown = alt_ext == "md"
 
         if not os.path.exists(path):
             return "", "NONE"
 
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read()
             format_str = "MARKDOWN" if as_markdown else "XML"
             return content, format_str

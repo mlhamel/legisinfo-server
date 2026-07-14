@@ -1,7 +1,10 @@
 import os
 import sys
+
+from connectrpc.compat import google_protobuf_codecs
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from starlette.routing import Mount
 
 # Add gen directory to python path to resolve proto.* imports
@@ -18,19 +21,15 @@ DATA_PATH = os.environ.get("LEGISINFO_DATA_PATH", "/data")
 reader = LegisinfoReader(DATA_PATH)
 servicer = LegisinfoServiceImpl(reader)
 
-from connectrpc.compat import google_protobuf_codecs
 
 # 3. Create ConnectRPC ASGI app wrapper
-connect_app = LegisinfoServiceASGIApplication(
-    servicer,
-    codecs=google_protobuf_codecs()
-)
+connect_app = LegisinfoServiceASGIApplication(servicer, codecs=google_protobuf_codecs())
 
 # 4. Instantiate FastAPI
 app = FastAPI(
     title="LEGISinfo ConnectRPC API Server",
     description="ConnectRPC (protobuf) API for querying parliament bills and stages texts.",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 # 5. Enable CORS for web browser clients (crucial for gRPC-Web and Connect protocols)
@@ -43,9 +42,8 @@ app.add_middleware(
 )
 
 # 6. Mount ConnectRPC service endpoints
-app.routes.append(
-    Mount(connect_app.path, app=connect_app)
-)
+app.routes.append(Mount(connect_app.path, app=connect_app))
+
 
 # 7. Add standard health checking routes
 @app.get("/", tags=["system"])
@@ -53,8 +51,9 @@ def root():
     return {
         "message": "Welcome to LEGISinfo API Server",
         "data_path": DATA_PATH,
-        "connect_endpoints": f"{connect_app.path}*"
+        "connect_endpoints": f"{connect_app.path}*",
     }
+
 
 @app.get("/health", tags=["system"])
 def health():
@@ -64,32 +63,31 @@ def health():
     return {
         "status": "healthy" if dir_exists else "degraded",
         "data_directory_configured": dir_exists,
-        "available_sessions_count": len(sessions)
+        "available_sessions_count": len(sessions),
     }
 
-from fastapi.openapi.utils import get_openapi
 
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-        
+
     openapi_schema = get_openapi(
         title=app.title,
         version=app.version,
         description=app.description,
         routes=app.routes,
     )
-    
+
     if "components" not in openapi_schema:
         openapi_schema["components"] = {}
     if "schemas" not in openapi_schema["components"]:
         openapi_schema["components"]["schemas"] = {}
-        
+
     schemas = {
         "ListSessionsRequest": {
             "type": "object",
             "properties": {},
-            "description": "Empty request body to list available sessions."
+            "description": "Empty request body to list available sessions.",
         },
         "ListSessionsResponse": {
             "type": "object",
@@ -97,14 +95,14 @@ def custom_openapi():
                 "sessions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of session identifiers (e.g. '45-1')."
+                    "description": "List of session identifiers (e.g. '45-1').",
                 }
-            }
+            },
         },
         "Chamber": {
             "type": "string",
             "enum": ["CHAMBER_UNSPECIFIED", "CHAMBER_HOUSE", "CHAMBER_SENATE"],
-            "description": "Parliamentary chamber filter."
+            "description": "Parliamentary chamber filter.",
         },
         "BillFilters": {
             "type": "object",
@@ -116,12 +114,20 @@ def custom_openapi():
                 "status": {"type": "string", "description": "Bill status filter."},
                 "latestActivity": {"type": "string", "description": "Latest stage activity filter."},
                 "number": {"type": "string", "description": "Bill number filter (e.g. 'C-11')."},
-                "dateAfter": {"type": "string", "format": "date", "description": "Filter bills updated after this date."},
-                "dateBefore": {"type": "string", "format": "date", "description": "Filter bills updated before this date."},
+                "dateAfter": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Filter bills updated after this date.",
+                },
+                "dateBefore": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Filter bills updated before this date.",
+                },
                 "searchQuery": {"type": "string", "description": "Full-text search query across fields."},
                 "hasText": {"type": "boolean", "description": "Filter by whether bill text is scraped."},
-                "committeeOnly": {"type": "boolean", "description": "Filter for bills in committee stage."}
-            }
+                "committeeOnly": {"type": "boolean", "description": "Filter for bills in committee stage."},
+            },
         },
         "SortField": {
             "type": "string",
@@ -131,12 +137,12 @@ def custom_openapi():
                 "SORT_FIELD_NUMBER",
                 "SORT_FIELD_SPONSOR",
                 "SORT_FIELD_STATUS",
-                "SORT_FIELD_TITLE"
-            ]
+                "SORT_FIELD_TITLE",
+            ],
         },
         "SortDirection": {
             "type": "string",
-            "enum": ["SORT_DIRECTION_UNSPECIFIED", "SORT_DIRECTION_DESC", "SORT_DIRECTION_ASC"]
+            "enum": ["SORT_DIRECTION_UNSPECIFIED", "SORT_DIRECTION_DESC", "SORT_DIRECTION_ASC"],
         },
         "ListBillsRequest": {
             "type": "object",
@@ -145,8 +151,8 @@ def custom_openapi():
                 "sortField": {"$ref": "#/components/schemas/SortField"},
                 "sortDirection": {"$ref": "#/components/schemas/SortDirection"},
                 "limit": {"type": "integer", "default": 20, "description": "Max number of bills to return."},
-                "offset": {"type": "integer", "default": 0, "description": "Offset index for pagination."}
-            }
+                "offset": {"type": "integer", "default": 0, "description": "Offset index for pagination."},
+            },
         },
         "BillSummary": {
             "type": "object",
@@ -157,26 +163,23 @@ def custom_openapi():
                 "titleFr": {"type": "string"},
                 "sponsorName": {"type": "string"},
                 "status": {"type": "string"},
-                "latestEventDate": {"type": "string", "format": "date-time"}
-            }
+                "latestEventDate": {"type": "string", "format": "date-time"},
+            },
         },
         "ListBillsResponse": {
             "type": "object",
             "properties": {
-                "bills": {
-                    "type": "array",
-                    "items": {"$ref": "#/components/schemas/BillSummary"}
-                },
-                "totalCount": {"type": "integer"}
-            }
+                "bills": {"type": "array", "items": {"$ref": "#/components/schemas/BillSummary"}},
+                "totalCount": {"type": "integer"},
+            },
         },
         "GetBillRequest": {
             "type": "object",
             "required": ["session", "billNumber"],
             "properties": {
                 "session": {"type": "string", "description": "Session code (e.g. '45-1')."},
-                "billNumber": {"type": "string", "description": "Bill number (e.g. 'C-11')."}
-            }
+                "billNumber": {"type": "string", "description": "Bill number (e.g. 'C-11')."},
+            },
         },
         "BillStage": {
             "type": "object",
@@ -184,8 +187,8 @@ def custom_openapi():
                 "slug": {"type": "string"},
                 "name": {"type": "string"},
                 "date": {"type": "string", "format": "date-time"},
-                "sourceType": {"type": "string"}
-            }
+                "sourceType": {"type": "string"},
+            },
         },
         "BillDetail": {
             "type": "object",
@@ -198,22 +201,11 @@ def custom_openapi():
                 "sponsorEmail": {"type": "string"},
                 "status": {"type": "string"},
                 "latestEventDate": {"type": "string", "format": "date-time"},
-                "stages": {
-                    "type": "array",
-                    "items": {"$ref": "#/components/schemas/BillStage"}
-                }
-            }
+                "stages": {"type": "array", "items": {"$ref": "#/components/schemas/BillStage"}},
+            },
         },
-        "GetBillResponse": {
-            "type": "object",
-            "properties": {
-                "bill": {"$ref": "#/components/schemas/BillDetail"}
-            }
-        },
-        "GetBillTextRequestFormat": {
-            "type": "string",
-            "enum": ["FORMAT_UNSPECIFIED", "FORMAT_XML", "FORMAT_MARKDOWN"]
-        },
+        "GetBillResponse": {"type": "object", "properties": {"bill": {"$ref": "#/components/schemas/BillDetail"}}},
+        "GetBillTextRequestFormat": {"type": "string", "enum": ["FORMAT_UNSPECIFIED", "FORMAT_XML", "FORMAT_MARKDOWN"]},
         "GetBillTextRequest": {
             "type": "object",
             "required": ["session", "billNumber"],
@@ -221,8 +213,8 @@ def custom_openapi():
                 "session": {"type": "string"},
                 "billNumber": {"type": "string"},
                 "stageSlug": {"type": "string", "description": "Specific stage slug (optional, defaults to latest)."},
-                "format": {"$ref": "#/components/schemas/GetBillTextRequestFormat"}
-            }
+                "format": {"$ref": "#/components/schemas/GetBillTextRequestFormat"},
+            },
         },
         "GetBillTextResponse": {
             "type": "object",
@@ -231,13 +223,13 @@ def custom_openapi():
                 "session": {"type": "string"},
                 "stageSlug": {"type": "string"},
                 "content": {"type": "string"},
-                "format": {"type": "string"}
-            }
-        }
+                "format": {"type": "string"},
+            },
+        },
     }
-    
+
     openapi_schema["components"]["schemas"].update(schemas)
-    
+
     paths = {
         "/legisinfo.v1.LegisinfoService/ListSessions": {
             "post": {
@@ -246,22 +238,16 @@ def custom_openapi():
                 "operationId": "ListSessions",
                 "requestBody": {
                     "required": True,
-                    "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/ListSessionsRequest"}
-                        }
-                    }
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListSessionsRequest"}}},
                 },
                 "responses": {
                     "200": {
                         "description": "Success response",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/ListSessionsResponse"}
-                            }
-                        }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/ListSessionsResponse"}}
+                        },
                     }
-                }
+                },
             }
         },
         "/legisinfo.v1.LegisinfoService/ListBills": {
@@ -271,22 +257,14 @@ def custom_openapi():
                 "operationId": "ListBills",
                 "requestBody": {
                     "required": True,
-                    "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/ListBillsRequest"}
-                        }
-                    }
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListBillsRequest"}}},
                 },
                 "responses": {
                     "200": {
                         "description": "Success response",
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/ListBillsResponse"}
-                            }
-                        }
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListBillsResponse"}}},
                     }
-                }
+                },
             }
         },
         "/legisinfo.v1.LegisinfoService/GetBill": {
@@ -296,22 +274,14 @@ def custom_openapi():
                 "operationId": "GetBill",
                 "requestBody": {
                     "required": True,
-                    "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/GetBillRequest"}
-                        }
-                    }
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GetBillRequest"}}},
                 },
                 "responses": {
                     "200": {
                         "description": "Success response",
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/GetBillResponse"}
-                            }
-                        }
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GetBillResponse"}}},
                     }
-                }
+                },
             }
         },
         "/legisinfo.v1.LegisinfoService/GetBillText": {
@@ -321,28 +291,23 @@ def custom_openapi():
                 "operationId": "GetBillText",
                 "requestBody": {
                     "required": True,
-                    "content": {
-                        "application/json": {
-                            "schema": {"$ref": "#/components/schemas/GetBillTextRequest"}
-                        }
-                    }
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GetBillTextRequest"}}},
                 },
                 "responses": {
                     "200": {
                         "description": "Success response",
                         "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/GetBillTextResponse"}
-                            }
-                        }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/GetBillTextResponse"}}
+                        },
                     }
-                }
+                },
             }
-        }
+        },
     }
-    
+
     openapi_schema["paths"].update(paths)
     app.openapi_schema = openapi_schema
     return openapi_schema
+
 
 app.openapi = custom_openapi

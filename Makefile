@@ -1,4 +1,4 @@
-.PHONY: help install generate run docker-build docker-up docker-down clean
+.PHONY: help install generate run lint format pre-commit-install docker-build docker-up docker-down clean
 
 LEGISINFO_DATA_PATH ?= ../legisinfo
 
@@ -7,6 +7,9 @@ help:
 	@echo "  install      - Set up Python virtual environment and dependencies"
 	@echo "  generate     - Generate Python and ConnectRPC code stubs using buf"
 	@echo "  run          - Run the FastAPI server locally (defaults to data path: $(LEGISINFO_DATA_PATH))"
+	@echo "  lint         - Run Ruff linter checks"
+	@echo "  format       - Run Ruff formatter"
+	@echo "  pre-commit-install - Install git hooks using prek"
 	@echo "  docker-build - Build the Docker container image"
 	@echo "  docker-up    - Build and launch the container stack using docker-compose"
 	@echo "  docker-down  - Stop the docker-compose stack"
@@ -22,6 +25,15 @@ generate:
 
 run: generate
 	LEGISINFO_DATA_PATH=$(LEGISINFO_DATA_PATH) .venv/bin/uvicorn legisinfo_server.main:app --reload --host 0.0.0.0 --port 8001
+
+lint:
+	uv run ruff check .
+
+format:
+	uv run ruff format .
+
+pre-commit-install:
+	prek install
 
 docker-build:
 	docker build -t legisinfo-server:latest .

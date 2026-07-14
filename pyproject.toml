@@ -28,6 +28,7 @@ dependencies = [
 dev = [
     "ruff>=0.3.0",
     "pytest>=8.0.0",
+    "pre-commit>=3.5.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -36,7 +37,36 @@ packages = ["src/legisinfo_server"]
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+exclude = [
+    "src/legisinfo_server/gen",
+]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-ignore = []
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "C90", # mccabe complexity
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "A",   # flake8-builtins
+    "C4",  # flake8-comprehensions
+    "T10", # flake8-debugger
+    "T20", # flake8-print
+    "ARG", # flake8-unused-arguments
+    "PT",  # flake8-pytest-style
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "RUF", # Ruff-specific rules
+]
+ignore = ["C901"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.6.0",
+]
