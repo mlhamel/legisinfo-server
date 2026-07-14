@@ -2,6 +2,5 @@
 __pycache__/
 *.pyc
 .cache/
-src/legisinfo_server/gen/
 dist/
 .DS_Store
