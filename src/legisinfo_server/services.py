@@ -1,11 +1,13 @@
 import os
 import sys
-import connectrpc
 
 # Add gen directory to python path to resolve proto.* imports
 sys.path.append(os.path.join(os.path.dirname(__file__), "gen"))
 
 from proto.legisinfo.v1 import legisinfo_pb2, legisinfo_connect
+from connectrpc.errors import ConnectError
+from connectrpc.code import Code
+from connectrpc.request import RequestContext
 
 class LegisinfoServiceImpl(legisinfo_connect.LegisinfoService):
     def __init__(self, reader):
@@ -14,7 +16,7 @@ class LegisinfoServiceImpl(legisinfo_connect.LegisinfoService):
     async def list_sessions(
         self,
         request: legisinfo_pb2.ListSessionsRequest,
-        ctx: connectrpc.Context
+        ctx: RequestContext
     ) -> legisinfo_pb2.ListSessionsResponse:
         sessions = self.reader.get_sessions()
         return legisinfo_pb2.ListSessionsResponse(sessions=sessions)
@@ -22,7 +24,7 @@ class LegisinfoServiceImpl(legisinfo_connect.LegisinfoService):
     async def list_bills(
         self,
         request: legisinfo_pb2.ListBillsRequest,
-        ctx: connectrpc.Context
+        ctx: RequestContext
     ) -> legisinfo_pb2.ListBillsResponse:
         session = "45-1"
         filters_dict = {}
@@ -84,13 +86,11 @@ class LegisinfoServiceImpl(legisinfo_connect.LegisinfoService):
     async def get_bill(
         self,
         request: legisinfo_pb2.GetBillRequest,
-        ctx: connectrpc.Context
+        ctx: RequestContext
     ) -> legisinfo_pb2.GetBillResponse:
         bill = self.reader.get_bill_detail(request.session, request.bill_number)
         if not bill:
-            ctx.set_code(connectrpc.Code.NOT_FOUND)
-            ctx.set_message(f"Bill {request.bill_number} not found in session {request.session}")
-            return legisinfo_pb2.GetBillResponse()
+            raise ConnectError(Code.NOT_FOUND, f"Bill {request.bill_number} not found in session {request.session}")
 
         pb_stages = [
             legisinfo_pb2.BillStage(
@@ -118,7 +118,7 @@ class LegisinfoServiceImpl(legisinfo_connect.LegisinfoService):
     async def get_bill_text(
         self,
         request: legisinfo_pb2.GetBillTextRequest,
-        ctx: connectrpc.Context
+        ctx: RequestContext
     ) -> legisinfo_pb2.GetBillTextResponse:
         as_markdown = (request.format != legisinfo_pb2.GetBillTextRequest.Format.FORMAT_XML)
         
@@ -130,9 +130,7 @@ class LegisinfoServiceImpl(legisinfo_connect.LegisinfoService):
         )
         
         if format_str == "NONE":
-            ctx.set_code(connectrpc.Code.NOT_FOUND)
-            ctx.set_message(f"Bill text not found for {request.bill_number} (stage: {request.stage_slug or 'latest'})")
-            return legisinfo_pb2.GetBillTextResponse()
+            raise ConnectError(Code.NOT_FOUND, f"Bill text not found for {request.bill_number} (stage: {request.stage_slug or 'latest'})")
             
         return legisinfo_pb2.GetBillTextResponse(
             bill_number=request.bill_number,
