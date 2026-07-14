@@ -21,7 +21,7 @@ generate:
 	buf generate
 
 run: generate
-	LEGISINFO_DATA_PATH=$(LEGISINFO_DATA_PATH) .venv/bin/uvicorn legisinfo_server.main:app --reload --host 0.0.0.0 --port 8000
+	LEGISINFO_DATA_PATH=$(LEGISINFO_DATA_PATH) .venv/bin/uvicorn legisinfo_server.main:app --reload --host 0.0.0.0 --port 8001
 
 docker-build:
 	docker build -t legisinfo-server:latest .

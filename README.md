@@ -51,7 +51,7 @@ Start the development server with hot reload:
 make run LEGISINFO_DATA_PATH=../legisinfo
 ```
 
-Your API is now running at `http://localhost:8000`. You can access the standard HTTP health check endpoint at `http://localhost:8000/health`.
+Your API is now running at `http://localhost:8001`. You can access the standard HTTP health check endpoint at `http://localhost:8001/health`.
 
 ---
 
@@ -98,7 +98,7 @@ Mount your scraped data folder and launch the container:
 make docker-up
 ```
 
-The container listens on port `8000` and mounts the local scraped data folder into the container's `/data` volume.
+The container maps host port `8001` to container port `8000` and mounts the local scraped data folder into the container's `/data` volume.
 
 ---
 

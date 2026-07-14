@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       # Mount the scraped data repository folder to /data inside the container
       - ../legisinfo:/data:ro
