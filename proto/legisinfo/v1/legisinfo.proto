@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package legisinfo.v1;
+
+service LegisinfoService {
+  // List all available parliament sessions (e.g. 45-1, 44-2)
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+  // List bills with filtering and sorting options
+  rpc ListBills(ListBillsRequest) returns (ListBillsResponse);
+
+  // Retrieve detailed metadata for a single bill
+  rpc GetBill(GetBillRequest) returns (GetBillResponse);
+
+  // Retrieve the text of a bill at a specific stage or the latest stage
+  rpc GetBillText(GetBillTextRequest) returns (GetBillTextResponse);
+}
+
+message ListSessionsRequest {}
+
+message ListSessionsResponse {
+  repeated string sessions = 1;
+}
+
+enum Chamber {
+  CHAMBER_UNSPECIFIED = 0;
+  CHAMBER_HOUSE = 1;
+  CHAMBER_SENATE = 2;
+}
+
+enum SortField {
+  SORT_FIELD_UNSPECIFIED = 0;
+  SORT_FIELD_NUMBER = 1;
+  SORT_FIELD_LATEST_EVENT_DATE = 2;
+  SORT_FIELD_SPONSOR = 3;
+  SORT_FIELD_STATUS = 4;
+  SORT_FIELD_TITLE = 5;
+}
+
+enum SortDirection {
+  SORT_DIRECTION_UNSPECIFIED = 0;
+  SORT_DIRECTION_ASC = 1;
+  SORT_DIRECTION_DESC = 2;
+}
+
+message BillFilters {
+  string session = 1;
+  Chamber chamber = 2;
+  string sponsor = 3;
+  string sponsor_affiliation = 4;
+  string status = 5;
+  string latest_activity = 6;
+  string number = 7;
+  string date_after = 8;  // ISO-8601 date, e.g. "2026-01-01"
+  string date_before = 9; // ISO-8601 date, e.g. "2026-06-01"
+  string search_query = 10;
+  bool has_text = 11;
+  bool committee_only = 12;
+}
+
+message ListBillsRequest {
+  BillFilters filters = 1;
+  SortField sort_field = 2;
+  SortDirection sort_direction = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListBillsResponse {
+  repeated BillSummary bills = 1;
+  int32 total_count = 2;
+}
+
+message GetBillRequest {
+  string session = 1;
+  string bill_number = 2; // e.g. "C-11"
+}
+
+message GetBillResponse {
+  BillDetail bill = 1;
+}
+
+message GetBillTextRequest {
+  string session = 1;
+  string bill_number = 2;
+  string stage_slug = 3; // e.g. "first-reading", or empty for latest stage
+  enum Format {
+    FORMAT_UNSPECIFIED = 0;
+    FORMAT_MARKDOWN = 1;
+    FORMAT_XML = 2;
+  }
+  Format format = 4;
+}
+
+message GetBillTextResponse {
+  string bill_number = 1;
+  string session = 2;
+  string stage_slug = 3;
+  string content = 4;
+  string format = 5;
+}
+
+message BillSummary {
+  string number = 1;
+  string session = 2;
+  string title_en = 3;
+  string title_fr = 4;
+  string sponsor_name = 5;
+  string status = 6;
+  string latest_event_date = 7;
+}
+
+message BillStage {
+  string slug = 1;
+  string name = 2;
+  string date = 3;
+  string source_type = 4;
+}
+
+message BillDetail {
+  string number = 1;
+  string session = 2;
+  string title_en = 3;
+  string title_fr = 4;
+  string sponsor_name = 5;
+  string sponsor_email = 6;
+  string status = 7;
+  string latest_event_date = 8;
+  repeated BillStage stages = 9;
+}

@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the scraped data repository folder to /data inside the container
+      - ../legisinfo:/data:ro
+    environment:
+      - LEGISINFO_DATA_PATH=/data
+    restart: unless-stopped

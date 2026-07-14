@@ -1,0 +1,8 @@
+version: v1
+plugins:
+  - plugin: buf.build/protocolbuffers/python:v25.2
+    out: src/legisinfo_server/gen
+  - plugin: buf.build/protocolbuffers/pyi:v25.2
+    out: src/legisinfo_server/gen
+  - plugin: buf.build/connectrpc/python:v0.10.1
+    out: src/legisinfo_server/gen
