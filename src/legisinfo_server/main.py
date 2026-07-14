@@ -18,8 +18,13 @@ DATA_PATH = os.environ.get("LEGISINFO_DATA_PATH", "/data")
 reader = LegisinfoReader(DATA_PATH)
 servicer = LegisinfoServiceImpl(reader)
 
+from connectrpc.compat import google_protobuf_codecs
+
 # 3. Create ConnectRPC ASGI app wrapper
-connect_app = LegisinfoServiceASGIApplication(servicer)
+connect_app = LegisinfoServiceASGIApplication(
+    servicer,
+    codecs=google_protobuf_codecs()
+)
 
 # 4. Instantiate FastAPI
 app = FastAPI(
